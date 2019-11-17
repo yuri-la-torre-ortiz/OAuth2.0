@@ -1,6 +1,4 @@
 from flask import Flask, render_template, request, redirect,jsonify, url_for, flash
-app = Flask(__name__)
-
 from sqlalchemy import create_engine, asc
 from sqlalchemy.orm import sessionmaker
 from database_setup import Base, Restaurant, MenuItem
@@ -17,8 +15,12 @@ import json
 from flask import make_response
 import requests
 
+app = Flask(__name__)
+
 CLIENT_ID = json.loads(
     open('client_secrets.json', 'r').read())['web']['client_id']
+
+APPLICATION_NAME = "Restaurant Menu Application"
 
 # Connect to Database and create database session
 engine = create_engine('sqlite:///restaurantmenu.db', connect_args={'check_same_thread': False})
@@ -116,6 +118,38 @@ def gconnect():
     flash("you are now logged in as %s" % login_session['username'])
     print "done!"
     return output
+
+# Step 6: DISCONNECT - Revoke a current user's token and reset their login_session.
+@app.route('/gdisconnect')
+def gdisconnect():
+    #Only disconnect a connected user.
+    credentials = login_session.get('credentials')
+    if credentials is None:
+        response = make_response(json.dumps('Current user not connected.'), 401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    # Execute HTTP GET request to revoke current token.
+    access_token = credentials.access_token
+    url = 'https://accounts.google.com/o/oauth2/revoke?token=%s' % access_token
+    h = httplib2.Http()
+    result = h.request(url, 'GET')[0]
+
+    if result['status'] == '200':
+        # Reset the user's session.
+        del login_session['credentials']
+        del login_session['gplus_id']
+        del login_session['username']
+        del login_session['email']
+        del login_session['picture']
+
+        response = make_response(json.dumps('Successfully disconnected.'), 200)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    else:
+        # For whatever reason, the given token was invalid.
+        response = make_response(json.dumps('Failed to revoke token for given user.'), 400)
+        response.headers['Content-Type'] = 'application/json'
+        return response
 
 #JSON APIs to view Restaurant Information
 @app.route('/restaurant/<int:restaurant_id>/menu/JSON')
